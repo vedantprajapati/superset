@@ -16,16 +16,15 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { t, SupersetTheme } from '@apache-superset/core';
 import {
   isFeatureEnabled,
   FeatureFlag,
   getChartMetadataRegistry,
   JsonResponse,
+  styled,
   SupersetClient,
-  isMatrixifyEnabled,
+  t,
 } from '@superset-ui/core';
-import { css, styled } from '@apache-superset/core/ui';
 import { useState, useMemo, useCallback } from 'react';
 import rison from 'rison';
 import { uniqBy } from 'lodash';
@@ -33,10 +32,8 @@ import { useSelector } from 'react-redux';
 import {
   createErrorHandler,
   createFetchRelated,
-  createFetchOwners,
   handleChartDelete,
 } from 'src/views/CRUD/utils';
-import { OWNER_OPTION_FILTER_PROPS } from 'src/features/owners/OwnerSelectLabel';
 import {
   useChartEditModal,
   useFavoriteStatus,
@@ -80,8 +77,8 @@ import ChartCard from 'src/features/charts/ChartCard';
 import { UserWithPermissionsAndRoles } from 'src/types/bootstrapTypes';
 import { findPermission } from 'src/utils/findPermission';
 import { QueryObjectColumns } from 'src/views/CRUD/types';
+import BulkCertifyModal from 'src/features/bulkUpdate/BulkCertifyModal';
 import { WIDER_DROPDOWN_WIDTH } from 'src/components/ListView/utils';
-import { Tag } from 'src/components/Tag';
 
 const FlexRowContainer = styled.div`
   align-items: center;
@@ -220,15 +217,13 @@ function ChartList(props: ChartListProps) {
     sshTunnelPrivateKeyPasswordFields,
     setSSHTunnelPrivateKeyPasswordFields,
   ] = useState<string[]>([]);
+  const [showBulkCertifyModal, setShowBulkCertifyModal] = useState(false);
+  const [bulkSelected, setBulkSelected] = useState<Chart[]>([]);
 
   // TODO: Fix usage of localStorage keying on the user id
-  const userSettings = useMemo(
-    () =>
-      dangerouslyGetItemDoNotUse(userId?.toString(), null) as {
-        thumbnails: boolean;
-      },
-    [userId],
-  );
+  const userSettings = dangerouslyGetItemDoNotUse(userId?.toString(), null) as {
+    thumbnails: boolean;
+  };
 
   const openChartImportModal = () => {
     showImportModal(true);
@@ -244,27 +239,28 @@ function ChartList(props: ChartListProps) {
     addSuccessToast(t('Chart imported'));
   };
 
+  const openBulkCertifyModal = (selected: Chart[]) => {
+    setBulkSelected(selected);
+    setShowBulkCertifyModal(true);
+  };
+
+  const closeBulkCertifyModal = () => {
+    setShowBulkCertifyModal(false);
+    setBulkSelected([]);
+  };
+
   const canCreate = hasPerm('can_write');
   const canEdit = hasPerm('can_write');
   const canDelete = hasPerm('can_write');
   const canExport = hasPerm('can_export');
   const initialSort = [{ id: 'changed_on_delta_humanized', desc: true }];
-
-  const handleBulkChartExport = useCallback(
-    async (chartsToExport: Chart[]) => {
-      const ids = chartsToExport.map(({ id }) => id);
-      setPreparingExport(true);
-      try {
-        await handleResourceExport('chart', ids, () => {
-          setPreparingExport(false);
-        });
-      } catch (error) {
-        setPreparingExport(false);
-        addDangerToast(t('There was an issue exporting the selected charts'));
-      }
-    },
-    [addDangerToast],
-  );
+  const handleBulkChartExport = (chartsToExport: Chart[]) => {
+    const ids = chartsToExport.map(({ id }) => id);
+    handleResourceExport('chart', ids, () => {
+      setPreparingExport(false);
+    });
+    setPreparingExport(true);
+  };
 
   function handleBulkChartDelete(chartsToDelete: Chart[]) {
     SupersetClient.delete({
@@ -283,53 +279,54 @@ function ChartList(props: ChartListProps) {
       ),
     );
   }
-  const fetchDashboards = useCallback(
-    async (filterValue = '', page: number, pageSize: number) => {
-      // add filters if filterValue
-      const filters = filterValue
-        ? {
-            filters: [
-              {
-                col: 'dashboard_title',
-                opr: FilterOperator.StartsWith,
-                value: filterValue,
-              },
-            ],
-          }
-        : {};
-      const queryParams = rison.encode({
-        select_columns: ['dashboard_title', 'id'],
-        keys: ['none'],
-        order_column: 'dashboard_title',
-        order_direction: 'asc',
-        page,
-        page_size: pageSize,
-        ...filters,
-      });
-      const response: void | JsonResponse = await SupersetClient.get({
-        endpoint: `/api/v1/dashboard/?q=${queryParams}`,
-      }).catch(() =>
-        addDangerToast(t('An error occurred while fetching dashboards')),
-      );
-      const dashboards = response?.json?.result?.map(
-        ({
-          dashboard_title: dashboardTitle,
-          id,
-        }: {
-          dashboard_title: string;
-          id: number;
-        }) => ({
-          label: dashboardTitle,
-          value: id,
-        }),
-      );
-      return {
-        data: uniqBy<LabeledValue>(dashboards, 'value'),
-        totalCount: response?.json?.count,
-      };
-    },
-    [addDangerToast],
-  );
+  const fetchDashboards = async (
+    filterValue = '',
+    page: number,
+    pageSize: number,
+  ) => {
+    // add filters if filterValue
+    const filters = filterValue
+      ? {
+          filters: [
+            {
+              col: 'dashboard_title',
+              opr: FilterOperator.StartsWith,
+              value: filterValue,
+            },
+          ],
+        }
+      : {};
+    const queryParams = rison.encode({
+      select_columns: ['dashboard_title', 'id'],
+      keys: ['none'],
+      order_column: 'dashboard_title',
+      order_direction: 'asc',
+      page,
+      page_size: pageSize,
+      ...filters,
+    });
+    const response: void | JsonResponse = await SupersetClient.get({
+      endpoint: `/api/v1/dashboard/?q=${queryParams}`,
+    }).catch(() =>
+      addDangerToast(t('An error occurred while fetching dashboards')),
+    );
+    const dashboards = response?.json?.result?.map(
+      ({
+        dashboard_title: dashboardTitle,
+        id,
+      }: {
+        dashboard_title: string;
+        id: number;
+      }) => ({
+        label: dashboardTitle,
+        value: id,
+      }),
+    );
+    return {
+      data: uniqBy<LabeledValue>(dashboards, 'value'),
+      totalCount: response?.json?.count,
+    };
+  };
 
   const columns = useMemo(
     () => [
@@ -386,22 +383,9 @@ function ChartList(props: ChartListProps) {
       {
         Cell: ({
           row: {
-            original: { viz_type: vizType, form_data: formData },
+            original: { viz_type: vizType },
           },
-        }: any) => (
-          <>
-            {registry.get(vizType)?.name || vizType}
-            {formData && isMatrixifyEnabled(formData) && (
-              <span
-                css={(theme: SupersetTheme) => css`
-                  margin-left: ${theme.marginXS}px;
-                `}
-              >
-                <Tag name="Matrixified" color="purple" />
-              </span>
-            )}
-          </>
-        ),
+        }: any) => registry.get(vizType)?.name || vizType,
         Header: t('Type'),
         accessor: 'viz_type',
         id: 'viz_type',
@@ -513,38 +497,6 @@ function ChartList(props: ChartListProps) {
 
           return (
             <StyledActions className="actions">
-              {canEdit && (
-                <Tooltip
-                  id="edit-action-tooltip"
-                  title={t('Edit')}
-                  placement="bottom"
-                >
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    className="action-button"
-                    onClick={openEditModal}
-                  >
-                    <Icons.EditOutlined data-test="edit-alt" iconSize="l" />
-                  </span>
-                </Tooltip>
-              )}
-              {canExport && (
-                <Tooltip
-                  id="export-action-tooltip"
-                  title={t('Export')}
-                  placement="bottom"
-                >
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    className="action-button"
-                    onClick={handleExport}
-                  >
-                    <Icons.UploadOutlined iconSize="l" />
-                  </span>
-                </Tooltip>
-              )}
               {canDelete && (
                 <ConfirmStatusChange
                   title={t('Please confirm')}
@@ -574,6 +526,38 @@ function ChartList(props: ChartListProps) {
                   )}
                 </ConfirmStatusChange>
               )}
+              {canExport && (
+                <Tooltip
+                  id="export-action-tooltip"
+                  title={t('Export')}
+                  placement="bottom"
+                >
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    className="action-button"
+                    onClick={handleExport}
+                  >
+                    <Icons.UploadOutlined iconSize="l" />
+                  </span>
+                </Tooltip>
+              )}
+              {canEdit && (
+                <Tooltip
+                  id="edit-action-tooltip"
+                  title={t('Edit')}
+                  placement="bottom"
+                >
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    className="action-button"
+                    onClick={openEditModal}
+                  >
+                    <Icons.EditOutlined data-test="edit-alt" iconSize="l" />
+                  </span>
+                </Tooltip>
+              )}
             </StyledActions>
           );
         },
@@ -599,8 +583,6 @@ function ChartList(props: ChartListProps) {
       refreshData,
       addSuccessToast,
       addDangerToast,
-      handleBulkChartExport,
-      openChartEditModal,
     ],
   );
 
@@ -622,7 +604,7 @@ function ChartList(props: ChartListProps) {
   );
 
   const filters: ListViewFilters = useMemo(() => {
-    const filtersList = [
+    const filters_list = [
       {
         Header: t('Name'),
         key: 'search',
@@ -687,8 +669,9 @@ function ChartList(props: ChartListProps) {
         input: 'select',
         operator: FilterOperator.RelationManyMany,
         unfilteredLabel: t('All'),
-        fetchSelects: createFetchOwners(
+        fetchSelects: createFetchRelated(
           'chart',
+          'owners',
           createErrorHandler(errMsg =>
             addDangerToast(
               t(
@@ -699,7 +682,6 @@ function ChartList(props: ChartListProps) {
           ),
           props.user,
         ),
-        optionFilterProps: OWNER_OPTION_FILTER_PROPS,
         paginate: true,
         dropdownStyle: { minWidth: WIDER_DROPDOWN_WIDTH },
       },
@@ -750,15 +732,8 @@ function ChartList(props: ChartListProps) {
         dropdownStyle: { minWidth: WIDER_DROPDOWN_WIDTH },
       },
     ] as ListViewFilters;
-    return filtersList;
-  }, [
-    addDangerToast,
-    canReadTag,
-    favoritesFilter,
-    fetchDashboards,
-    props.user,
-    userId,
-  ]);
+    return filters_list;
+  }, [addDangerToast, favoritesFilter, props.user]);
 
   const sortTypes = [
     {
@@ -808,14 +783,8 @@ function ChartList(props: ChartListProps) {
       addSuccessToast,
       bulkSelectEnabled,
       favoriteStatus,
-      handleBulkChartExport,
       hasPerm,
       loading,
-      openChartEditModal,
-      refreshData,
-      saveFavoriteStatus,
-      userId,
-      userSettings,
     ],
   );
 
@@ -876,20 +845,28 @@ function ChartList(props: ChartListProps) {
         {confirmDelete => {
           const enableBulkTag = isFeatureEnabled(FeatureFlag.TaggingSystem);
           const bulkActions: ListViewProps['bulkActions'] = [];
-          if (canDelete) {
-            bulkActions.push({
-              key: 'delete',
-              name: t('Delete'),
-              type: 'danger',
-              onSelect: confirmDelete,
-            });
-          }
           if (canExport) {
             bulkActions.push({
               key: 'export',
               name: t('Export'),
               type: 'primary',
               onSelect: handleBulkChartExport,
+            });
+          }
+          if (canEdit) {
+            bulkActions.push({
+              key: 'certify',
+              name: t('Certify'),
+              type: 'primary',
+              onSelect: openBulkCertifyModal,
+            });
+          }
+          if (canDelete) {
+            bulkActions.push({
+              key: 'delete',
+              name: t('Delete'),
+              type: 'danger',
+              onSelect: confirmDelete,
             });
           }
           return (
@@ -927,7 +904,16 @@ function ChartList(props: ChartListProps) {
           );
         }}
       </ConfirmStatusChange>
-
+      <BulkCertifyModal
+        show={showBulkCertifyModal}
+        onHide={closeBulkCertifyModal}
+        selected={bulkSelected}
+        resourceName="chart"
+        resourceLabel={t('chart')}
+        refreshData={refreshData}
+        addSuccessToast={addSuccessToast}
+        addDangerToast={addDangerToast}
+      />
       <ImportModelsModal
         resourceName="chart"
         resourceLabel={t('chart')}

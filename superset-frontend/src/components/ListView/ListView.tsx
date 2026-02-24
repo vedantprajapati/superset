@@ -1,35 +1,35 @@
 /**
  * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements.  See the NOTICE file
+ * or more contributor license agreements. See the NOTICE file
  * distributed with this work for additional information
- * regarding copyright ownership.  The ASF licenses this file
+ * regarding copyright ownership. The ASF licenses this file
  * to you under the Apache License, Version 2.0 (the
  * "License"); you may not use this file except in compliance
- * with the License.  You may obtain a copy of the License at
+ * with the License. You may obtain a copy of the License at
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing,
  * software distributed under the License is distributed on an
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
- * KIND, either express or implied.  See the License for the
+ * KIND, either express or implied. See the License for the
  * specific language governing permissions and limitations
  * under the License.
  */
-import { t } from '@apache-superset/core';
-import { styled, Alert } from '@apache-superset/core/ui';
+import { t, styled } from '@superset-ui/core';
 import { useCallback, useEffect, useRef, useState, ReactNode } from 'react';
 import cx from 'classnames';
+import Pagination from '@superset-ui/core/components/Pagination';
 import TableCollection from '@superset-ui/core/components/TableCollection';
 import BulkTagModal from 'src/features/tags/BulkTagModal';
 import {
-  Button,
-  Tooltip,
+  Alert,
   Checkbox,
   Icons,
   EmptyState,
+  DropdownButton,
+  Menu,
   Loading,
-  Pagination,
   type EmptyStateProps,
 } from '@superset-ui/core/components';
 import CardCollection from './CardCollection';
@@ -48,7 +48,6 @@ const ListViewStyles = styled.div`
   ${({ theme }) => `
     text-align: center;
     background-color: ${theme.colorBgLayout};
-    padding-top: ${theme.paddingXS}px;
 
     .superset-list-view {
       text-align: left;
@@ -62,7 +61,7 @@ const ListViewStyles = styled.div`
         & .controls {
           display: flex;
           flex-wrap: wrap;
-          column-gap: ${theme.sizeUnit * 7}px;
+          column-gap: ${theme.sizeUnit * 6}px;
           row-gap: ${theme.sizeUnit * 4}px;
         }
       }
@@ -73,7 +72,6 @@ const ListViewStyles = styled.div`
 
       .body {
         overflow-x: auto;
-        overflow-y: hidden;
       }
 
       .ant-empty {
@@ -93,7 +91,6 @@ const ListViewStyles = styled.div`
     .row-count-container {
       margin-top: ${theme.sizeUnit * 2}px;
       color: ${theme.colorText};
-      text-align: center;
     }
   `}
 `;
@@ -115,20 +112,39 @@ const BulkSelectWrapper = styled(Alert)`
     color: ${theme.colorText};
     background-color: ${theme.colorPrimaryBg};
 
+    .ant-alert-message {
+      display: flex;
+      align-items: center;
+    }
+
     .selectedCopy {
       display: inline-block;
       padding: ${theme.sizeUnit * 2}px 0;
+      white-space: nowrap;
+      flex-shrink: 0;
     }
 
     .deselect-all, .tag-btn {
       color: ${theme.colorPrimary};
       margin-left: ${theme.sizeUnit * 4}px;
+      white-space: nowrap;
+      flex-shrink: 0;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 0;
+      text-decoration: underline;
+
+      &:hover {
+        color: ${theme.colorPrimaryHover};
+      }
     }
 
     .divider {
-      margin: ${`${-theme.sizeUnit * 2}px 0 ${-theme.sizeUnit * 2}px ${theme.sizeUnit * 4}px`};
+      margin-left: ${theme.sizeUnit * 4}px;
+      margin-right: ${theme.sizeUnit * 4}px;
       width: 1px;
-      height: ${theme.sizeUnit * 8}px;
+      height: 32px;
       box-shadow: inset -1px 0px 0px ${theme.colorBorder};
       display: inline-flex;
       vertical-align: middle;
@@ -168,6 +184,9 @@ const ViewModeContainer = styled.div`
       border-radius: ${theme.borderRadius}px;
       padding: ${theme.sizeUnit}px;
       padding-bottom: ${theme.sizeUnit * 0.5}px;
+      background: none;
+      border: none;
+      cursor: pointer;
 
       &:first-of-type {
         margin-right: ${theme.sizeUnit * 2}px;
@@ -202,36 +221,29 @@ const ViewModeToggle = ({
   setMode: (mode: 'table' | 'card') => void;
 }) => (
   <ViewModeContainer>
-    <Tooltip title={t('Grid view')}>
-      <div
-        role="button"
-        tabIndex={0}
-        aria-pressed={mode === 'card'}
-        onClick={(e: React.MouseEvent<HTMLDivElement>) => {
-          e.currentTarget.blur();
-          setMode('card');
-        }}
-        className={cx('toggle-button', { active: mode === 'card' })}
-      >
-        <Icons.AppstoreOutlined iconSize="xl" />
-      </div>
-    </Tooltip>
-    <Tooltip title={t('List view')}>
-      <div
-        role="button"
-        tabIndex={0}
-        aria-pressed={mode === 'table'}
-        onClick={(e: React.MouseEvent<HTMLDivElement>) => {
-          e.currentTarget.blur();
-          setMode('table');
-        }}
-        className={cx('toggle-button', { active: mode === 'table' })}
-      >
-        <Icons.UnorderedListOutlined iconSize="xl" />
-      </div>
-    </Tooltip>
+    <button
+      type="button"
+      onClick={e => {
+        e.currentTarget.blur();
+        setMode('card');
+      }}
+      className={cx('toggle-button', { active: mode === 'card' })}
+    >
+      <Icons.AppstoreOutlined iconSize="xl" />
+    </button>
+    <button
+      type="button"
+      onClick={e => {
+        e.currentTarget.blur();
+        setMode('table');
+      }}
+      className={cx('toggle-button', { active: mode === 'table' })}
+    >
+      <Icons.UnorderedListOutlined iconSize="xl" />
+    </button>
   </ViewModeContainer>
 );
+
 export interface ListViewProps<T extends object = any> {
   columns: any[];
   data: T[];
@@ -276,7 +288,7 @@ export function ListView<T extends object = any>({
   initialSort = [],
   className = '',
   filters = [],
-  bulkActions = [],
+  bulkActions: initialBulkActions = [],
   bulkSelectEnabled = false,
   disableBulkSelect = () => {},
   renderBulkSelectCopy = selected => t('%s Selected', selected.length),
@@ -292,6 +304,20 @@ export function ListView<T extends object = any>({
   addSuccessToast,
   addDangerToast,
 }: ListViewProps<T>) {
+  const [showBulkTagModal, setShowBulkTagModal] = useState<boolean>(false);
+  const [isBulkActionLoading, setIsBulkActionLoading] = useState(false);
+
+  const bulkActions = [...initialBulkActions];
+  if (enableBulkTag) {
+    const insertIndex = bulkActions.length > 0 ? 1 : 0;
+    bulkActions.splice(insertIndex, 0, {
+      key: 'tag',
+      name: t('Add Tag'),
+      type: 'secondary',
+      onSelect: () => setShowBulkTagModal(true),
+    });
+  }
+
   const {
     getTableProps,
     getTableBodyProps,
@@ -345,7 +371,6 @@ export function ListView<T extends object = any>({
   }, [query.filters]);
 
   const cardViewEnabled = Boolean(renderCard);
-  const [showBulkTagModal, setShowBulkTagModal] = useState<boolean>(false);
 
   useEffect(() => {
     // discard selections if bulk select is disabled
@@ -357,6 +382,38 @@ export function ListView<T extends object = any>({
       gotoPage(0);
     }
   }, [gotoPage, loading, pageCount, pageIndex]);
+
+  const firstAction = bulkActions[0];
+  const dropdownActions = bulkActions.slice(1);
+
+  const handleMenuClick = (info: { key: React.Key }) => {
+    const keyStr = String(info.key);
+    const action = dropdownActions.find(a => a.key === keyStr);
+    if (action) {
+      action.onSelect(selectedFlatRows.map(r => r.original));
+    }
+  };
+
+  const handleBulkActionClick = async () => {
+    if (!firstAction) return;
+
+    setIsBulkActionLoading(true);
+    try {
+      await firstAction.onSelect(selectedFlatRows.map(r => r.original));
+    } finally {
+      setIsBulkActionLoading(false);
+    }
+  };
+
+  const dropdownMenu = (
+    <Menu onClick={handleMenuClick}>
+      {dropdownActions.map(action => (
+        <Menu.Item key={action.key} data-test="bulk-select-action">
+          {action.name}
+        </Menu.Item>
+      ))}
+    </Menu>
+  );
 
   return (
     <ListViewStyles>
@@ -404,48 +461,34 @@ export function ListView<T extends object = any>({
               onClose={disableBulkSelect}
               message={
                 <>
-                  <div className="selectedCopy" data-test="bulk-select-copy">
+                  <span className="selectedCopy" data-test="bulk-select-copy">
                     {renderBulkSelectCopy(selectedFlatRows)}
-                  </div>
+                  </span>
                   {Boolean(selectedFlatRows.length) && (
                     <>
-                      <span
+                      <button
+                        type="button"
                         data-test="bulk-select-deselect-all"
-                        style={{ cursor: 'pointer' }}
-                        role="button"
-                        tabIndex={0}
                         className="deselect-all"
                         onClick={() => toggleAllRowsSelected(false)}
                       >
                         {t('Deselect all')}
-                      </span>
-                      <div className="divider" />
-                      {bulkActions.map(action => (
-                        <Button
-                          data-test="bulk-select-action"
-                          key={action.key}
-                          buttonStyle={action.type}
-                          cta
-                          onClick={() =>
-                            action.onSelect(
-                              selectedFlatRows.map((r: any) => r.original),
-                            )
-                          }
-                        >
-                          {action.name}
-                        </Button>
-                      ))}
-                      {enableBulkTag && (
-                        <span
-                          data-test="bulk-select-tag-btn"
-                          role="button"
-                          style={{ cursor: 'pointer' }}
-                          tabIndex={0}
-                          className="tag-btn"
-                          onClick={() => setShowBulkTagModal(true)}
-                        >
-                          {t('Add Tag')}
-                        </span>
+                      </button>
+                      {firstAction && (
+                        <>
+                          <div className="divider" />
+                          <DropdownButton
+                            popupRender={() =>
+                              dropdownActions.length > 0 ? dropdownMenu : <></>
+                            }
+                            onClick={handleBulkActionClick}
+                            loading={isBulkActionLoading}
+                            type="primary"
+                            data-test="bulk-select-action"
+                          >
+                            {firstAction.name}
+                          </DropdownButton>
+                        </>
                       )}
                     </>
                   )}
@@ -454,39 +497,14 @@ export function ListView<T extends object = any>({
             />
           )}
           {viewMode === 'card' && (
-            <>
-              <CardCollection
-                bulkSelectEnabled={bulkSelectEnabled}
-                prepareRow={prepareRow}
-                renderCard={renderCard}
-                rows={rows}
-                loading={loading}
-                showThumbnails={showThumbnails}
-              />
-              {count > 0 && (
-                <div className="pagination-container">
-                  <Pagination
-                    current={pageIndex + 1}
-                    pageSize={pageSize}
-                    total={count}
-                    onChange={(page: number) => {
-                      gotoPage(page - 1);
-                    }}
-                    size="default"
-                    showSizeChanger={false}
-                    showQuickJumper={false}
-                    hideOnSinglePage
-                    align="center"
-                  />
-                  <div className="row-count-container">
-                    {`${pageIndex * pageSize + 1}-${Math.min(
-                      (pageIndex + 1) * pageSize,
-                      count,
-                    )} of ${count}`}
-                  </div>
-                </div>
-              )}
-            </>
+            <CardCollection
+              bulkSelectEnabled={bulkSelectEnabled}
+              prepareRow={prepareRow}
+              renderCard={renderCard}
+              rows={rows}
+              loading={loading}
+              showThumbnails={showThumbnails}
+            />
           )}
           {viewMode === 'table' && (
             <>
@@ -509,19 +527,13 @@ export function ListView<T extends object = any>({
                   bulkSelectEnabled={bulkSelectEnabled}
                   selectedFlatRows={selectedFlatRows}
                   toggleRowSelected={(rowId, value) => {
-                    const row = rows.find((r: any) => r.id === rowId);
+                    const row = rows.find(r => r.id === rowId);
                     if (row) {
                       prepareRow(row);
-                      (row as any).toggleRowSelected(value);
+                      row.toggleRowSelected(value);
                     }
                   }}
                   toggleAllRowsSelected={toggleAllRowsSelected}
-                  pageIndex={pageIndex}
-                  pageSize={pageSize}
-                  totalCount={count}
-                  onPageChange={newPageIndex => {
-                    gotoPage(newPageIndex);
-                  }}
                 />
               )}
             </>
@@ -535,7 +547,7 @@ export function ListView<T extends object = any>({
                   size="large"
                   image="filter-results.svg"
                   buttonAction={() => handleClearFilterControls()}
-                  buttonText={t('Clear all filters')}
+                  buttonText={t('clear all filters')}
                 />
               ) : (
                 <EmptyState
@@ -549,6 +561,25 @@ export function ListView<T extends object = any>({
           )}
         </div>
       </div>
+      {rows.length > 0 && (
+        <div className="pagination-container">
+          <Pagination
+            totalPages={pageCount || 0}
+            currentPage={pageCount && pageIndex < pageCount ? pageIndex + 1 : 0}
+            onChange={(p: number) => gotoPage(p - 1)}
+            hideFirstAndLastPageLinks
+          />
+          <div className="row-count-container">
+            {!loading &&
+              t(
+                '%s-%s of %s',
+                pageSize * pageIndex + (rows.length && 1),
+                pageSize * pageIndex + rows.length,
+                count,
+              )}
+          </div>
+        </div>
+      )}
     </ListViewStyles>
   );
 }

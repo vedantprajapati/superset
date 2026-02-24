@@ -16,24 +16,22 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { t } from '@apache-superset/core';
 import {
   isFeatureEnabled,
   FeatureFlag,
+  styled,
   SupersetClient,
+  t,
 } from '@superset-ui/core';
-import { styled } from '@apache-superset/core/ui';
 import { useSelector } from 'react-redux';
 import { useState, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import rison from 'rison';
 import {
   createFetchRelated,
-  createFetchOwners,
   createErrorHandler,
   handleDashboardDelete,
 } from 'src/views/CRUD/utils';
-import { OWNER_OPTION_FILTER_PROPS } from 'src/features/owners/OwnerSelectLabel';
 import { useListViewResource, useFavoriteStatus } from 'src/views/CRUD/hooks';
 import {
   CertifiedBadge,
@@ -75,6 +73,7 @@ import DashboardCard from 'src/features/dashboards/DashboardCard';
 import { DashboardStatus } from 'src/features/dashboards/types';
 import { UserWithPermissionsAndRoles } from 'src/types/bootstrapTypes';
 import { findPermission } from 'src/utils/findPermission';
+import BulkCertifyModal from 'src/features/bulkUpdate/BulkCertifyModal';
 import { navigateTo } from 'src/utils/navigationUtils';
 import { WIDER_DROPDOWN_WIDTH } from 'src/components/ListView/utils';
 
@@ -199,6 +198,8 @@ function DashboardList(props: DashboardListProps) {
     sshTunnelPrivateKeyPasswordFields,
     setSSHTunnelPrivateKeyPasswordFields,
   ] = useState<string[]>([]);
+  const [showBulkCertifyModal, setShowBulkCertifyModal] = useState(false);
+  const [bulkSelected, setBulkSelected] = useState<Dashboard[]>([]);
 
   const openDashboardImportModal = () => {
     showImportModal(true);
@@ -214,6 +215,16 @@ function DashboardList(props: DashboardListProps) {
     addSuccessToast(t('Dashboard imported'));
   };
 
+  const openBulkCertifyModal = (selected: Dashboard[]) => {
+    setBulkSelected(selected);
+    setShowBulkCertifyModal(true);
+  };
+
+  const closeBulkCertifyModal = () => {
+    setShowBulkCertifyModal(false);
+    setBulkSelected([]);
+  };
+
   // TODO: Fix usage of localStorage keying on the user id
   const userKey = dangerouslyGetItemDoNotUse(user?.userId?.toString(), null);
 
@@ -224,9 +235,9 @@ function DashboardList(props: DashboardListProps) {
 
   const initialSort = [{ id: 'changed_on_delta_humanized', desc: true }];
 
-  const openDashboardEditModal = useCallback((dashboard: Dashboard) => {
+  function openDashboardEditModal(dashboard: Dashboard) {
     setDashboardToEdit(dashboard);
-  }, []);
+  }
 
   function handleDashboardEdit(edits: Dashboard) {
     return SupersetClient.get({
@@ -237,29 +248,29 @@ function DashboardList(props: DashboardListProps) {
           dashboards.map(dashboard => {
             if (dashboard.id === json?.result?.id) {
               const {
-                changed_by_name: changedByName,
-                changed_by: changedBy,
-                dashboard_title: dashboardTitle = '',
+                changed_by_name,
+                changed_by,
+                dashboard_title = '',
                 slug = '',
-                json_metadata: jsonMetadata = '',
-                changed_on_delta_humanized: changedOnDeltaHumanized,
+                json_metadata = '',
+                changed_on_delta_humanized,
                 url = '',
-                certified_by: certifiedBy = '',
-                certification_details: certificationDetails = '',
+                certified_by = '',
+                certification_details = '',
                 owners,
                 tags,
               } = json.result;
               return {
                 ...dashboard,
-                changed_by_name: changedByName,
-                changed_by: changedBy,
-                dashboard_title: dashboardTitle,
+                changed_by_name,
+                changed_by,
+                dashboard_title,
                 slug,
-                json_metadata: jsonMetadata,
-                changed_on_delta_humanized: changedOnDeltaHumanized,
+                json_metadata,
+                changed_on_delta_humanized,
                 url,
-                certified_by: certifiedBy,
-                certification_details: certificationDetails,
+                certified_by,
+                certification_details,
                 owners,
                 tags,
               };
@@ -276,23 +287,13 @@ function DashboardList(props: DashboardListProps) {
     );
   }
 
-  const handleBulkDashboardExport = useCallback(
-    async (dashboardsToExport: Dashboard[]) => {
-      const ids = dashboardsToExport.map(({ id }) => id);
-      setPreparingExport(true);
-      try {
-        await handleResourceExport('dashboard', ids, () => {
-          setPreparingExport(false);
-        });
-      } catch (error) {
-        setPreparingExport(false);
-        addDangerToast(
-          t('There was an issue exporting the selected dashboards'),
-        );
-      }
-    },
-    [addDangerToast],
-  );
+  const handleBulkDashboardExport = (dashboardsToExport: Dashboard[]) => {
+    const ids = dashboardsToExport.map(({ id }) => id);
+    handleResourceExport('dashboard', ids, () => {
+      setPreparingExport(false);
+    });
+    setPreparingExport(true);
+  };
 
   function handleBulkDashboardDelete(dashboardsToDelete: Dashboard[]) {
     return SupersetClient.delete({
@@ -440,38 +441,6 @@ function DashboardList(props: DashboardListProps) {
 
           return (
             <Actions className="actions">
-              {canEdit && (
-                <Tooltip
-                  id="edit-action-tooltip"
-                  title={t('Edit')}
-                  placement="bottom"
-                >
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    className="action-button"
-                    onClick={handleEdit}
-                  >
-                    <Icons.EditOutlined data-test="edit-alt" iconSize="l" />
-                  </span>
-                </Tooltip>
-              )}
-              {canExport && (
-                <Tooltip
-                  id="export-action-tooltip"
-                  title={t('Export')}
-                  placement="bottom"
-                >
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    className="action-button"
-                    onClick={handleExport}
-                  >
-                    <Icons.UploadOutlined iconSize="l" />
-                  </span>
-                </Tooltip>
-              )}
               {canDelete && (
                 <ConfirmStatusChange
                   title={t('Please confirm')}
@@ -504,6 +473,38 @@ function DashboardList(props: DashboardListProps) {
                   )}
                 </ConfirmStatusChange>
               )}
+              {canExport && (
+                <Tooltip
+                  id="export-action-tooltip"
+                  title={t('Export')}
+                  placement="bottom"
+                >
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    className="action-button"
+                    onClick={handleExport}
+                  >
+                    <Icons.UploadOutlined iconSize="l" />
+                  </span>
+                </Tooltip>
+              )}
+              {canEdit && (
+                <Tooltip
+                  id="edit-action-tooltip"
+                  title={t('Edit')}
+                  placement="bottom"
+                >
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    className="action-button"
+                    onClick={handleEdit}
+                  >
+                    <Icons.EditOutlined data-test="edit-alt" iconSize="l" />
+                  </span>
+                </Tooltip>
+              )}
             </Actions>
           );
         },
@@ -528,8 +529,6 @@ function DashboardList(props: DashboardListProps) {
       refreshData,
       addSuccessToast,
       addDangerToast,
-      handleBulkDashboardExport,
-      openDashboardEditModal,
     ],
   );
 
@@ -551,7 +550,7 @@ function DashboardList(props: DashboardListProps) {
   );
 
   const filters: ListViewFilters = useMemo(() => {
-    const filtersList = [
+    const filters_list = [
       {
         Header: t('Name'),
         key: 'search',
@@ -591,8 +590,9 @@ function DashboardList(props: DashboardListProps) {
         input: 'select',
         operator: FilterOperator.RelationManyMany,
         unfilteredLabel: t('All'),
-        fetchSelects: createFetchOwners(
+        fetchSelects: createFetchRelated(
           'dashboard',
+          'owners',
           createErrorHandler(errMsg =>
             addDangerToast(
               t(
@@ -601,9 +601,8 @@ function DashboardList(props: DashboardListProps) {
               ),
             ),
           ),
-          user,
+          props.user,
         ),
-        optionFilterProps: OWNER_OPTION_FILTER_PROPS,
         paginate: true,
         dropdownStyle: { minWidth: WIDER_DROPDOWN_WIDTH },
       },
@@ -643,8 +642,8 @@ function DashboardList(props: DashboardListProps) {
         dropdownStyle: { minWidth: WIDER_DROPDOWN_WIDTH },
       },
     ] as ListViewFilters;
-    return filtersList;
-  }, [addDangerToast, canReadTag, favoritesFilter, user]);
+    return filters_list;
+  }, [addDangerToast, favoritesFilter, props.user]);
 
   const sortTypes = [
     {
@@ -695,8 +694,6 @@ function DashboardList(props: DashboardListProps) {
       user?.userId,
       saveFavoriteStatus,
       userKey,
-      handleBulkDashboardExport,
-      openDashboardEditModal,
     ],
   );
 
@@ -750,20 +747,28 @@ function DashboardList(props: DashboardListProps) {
         {confirmDelete => {
           const enableBulkTag = isFeatureEnabled(FeatureFlag.TaggingSystem);
           const bulkActions: ListViewProps['bulkActions'] = [];
-          if (canDelete) {
-            bulkActions.push({
-              key: 'delete',
-              name: t('Delete'),
-              type: 'danger',
-              onSelect: confirmDelete,
-            });
-          }
           if (canExport) {
             bulkActions.push({
               key: 'export',
               name: t('Export'),
               type: 'primary',
               onSelect: handleBulkDashboardExport,
+            });
+          }
+          if (canEdit) {
+            bulkActions.push({
+              key: 'certify',
+              name: t('Certify'),
+              type: 'primary',
+              onSelect: openBulkCertifyModal,
+            });
+          }
+          if (canDelete) {
+            bulkActions.push({
+              key: 'delete',
+              name: t('Delete'),
+              type: 'danger',
+              onSelect: confirmDelete,
             });
           }
           return (
@@ -835,7 +840,16 @@ function DashboardList(props: DashboardListProps) {
           );
         }}
       </ConfirmStatusChange>
-
+      <BulkCertifyModal
+        show={showBulkCertifyModal}
+        onHide={closeBulkCertifyModal}
+        selected={bulkSelected}
+        resourceName="dashboard"
+        resourceLabel={t('dashboard')}
+        refreshData={refreshData}
+        addSuccessToast={addSuccessToast}
+        addDangerToast={addDangerToast}
+      />
       <ImportModelsModal
         resourceName="dashboard"
         resourceLabel={t('dashboard')}

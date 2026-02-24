@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { type ReactNode } from 'react';
+import { ReactNode } from 'react';
 
 export interface SortColumn {
   id: string;
@@ -24,9 +24,8 @@ export interface SortColumn {
 }
 
 export interface SelectOption {
-  label: ReactNode;
+  label: string;
   value: any;
-  [key: string]: unknown;
 }
 
 export interface CardSortSelectOption {
@@ -60,15 +59,12 @@ export interface ListViewFilter {
     page: number,
     pageSize: number,
   ) => Promise<{ data: SelectOption[]; totalCount: number }>;
-  optionFilterProps?: string[];
   paginate?: boolean;
   loading?: boolean;
   dateFilterValueType?: 'unix' | 'iso';
   min?: number;
   max?: number;
   dropdownStyle?: React.CSSProperties;
-  autoComplete?: string;
-  inputName?: string;
 }
 
 export type ListViewFilters = ListViewFilter[];
@@ -83,7 +79,7 @@ export type InnerFilterValue =
   | undefined
   | string[]
   | number[]
-  | { label: ReactNode; value: string | number }
+  | { label: string; value: string | number }
   | [number | null, number | null];
 
 export interface ListViewFilterValue {
